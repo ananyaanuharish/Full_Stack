@@ -1,0 +1,315 @@
+{
+  "info": {
+    "name": "Three-Way Match Engine",
+    "description": "API collection for the Three-Way Match Engine — PO, GRN, and Invoice reconciliation system.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:4000",
+      "type": "string"
+    },
+    {
+      "key": "token",
+      "value": "",
+      "type": "string",
+      "description": "Set automatically by the Login request"
+    },
+    {
+      "key": "po_number",
+      "value": "CI4PO05788",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "item": [
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "const json = pm.response.json();",
+                  "if (json.token) {",
+                  "  pm.collectionVariables.set('token', json.token);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"username\": \"admin\",\n  \"password\": \"your_password\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/auth/login",
+              "host": ["{{base_url}}"],
+              "path": ["auth", "login"]
+            },
+            "description": "Returns a Bearer token. Token is saved automatically to the `token` collection variable."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Documents",
+      "item": [
+        {
+          "name": "Upload Document (PO)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "description": "PDF or image file" },
+                { "key": "documentType", "value": "po", "type": "text", "description": "One of: po, grn, invoice" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/documents/upload",
+              "host": ["{{base_url}}"],
+              "path": ["documents", "upload"]
+            },
+            "description": "Upload a Purchase Order PDF. Change `documentType` to `grn` or `invoice` as needed. Returns parsed document with match audit entry."
+          }
+        },
+        {
+          "name": "Upload Document (GRN)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "description": "PDF or image file" },
+                { "key": "documentType", "value": "grn", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/documents/upload",
+              "host": ["{{base_url}}"],
+              "path": ["documents", "upload"]
+            }
+          }
+        },
+        {
+          "name": "Upload Document (Invoice)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "body": {
+              "mode": "formdata",
+              "formdata": [
+                { "key": "file", "type": "file", "description": "PDF or image file" },
+                { "key": "documentType", "value": "invoice", "type": "text" }
+              ]
+            },
+            "url": {
+              "raw": "{{base_url}}/documents/upload",
+              "host": ["{{base_url}}"],
+              "path": ["documents", "upload"]
+            }
+          }
+        },
+        {
+          "name": "List Documents",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/documents?type=po&poNumber={{po_number}}",
+              "host": ["{{base_url}}"],
+              "path": ["documents"],
+              "query": [
+                { "key": "type", "value": "po", "description": "Filter by document type: po, grn, invoice" },
+                { "key": "poNumber", "value": "{{po_number}}", "description": "Filter by PO number" }
+              ]
+            },
+            "description": "List all documents. Both query params are optional."
+          }
+        },
+        {
+          "name": "Get Document by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/documents/:id",
+              "host": ["{{base_url}}"],
+              "path": ["documents", ":id"],
+              "variable": [
+                { "key": "id", "value": "", "description": "MongoDB document _id" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get Document File (PDF preview)",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/documents/:id/file",
+              "host": ["{{base_url}}"],
+              "path": ["documents", ":id", "file"],
+              "variable": [
+                { "key": "id", "value": "", "description": "MongoDB document _id" }
+              ]
+            },
+            "description": "Returns the raw PDF/image. Also accepts `?token=<jwt>` for iframe embed without an Authorization header."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Match",
+      "item": [
+        {
+          "name": "Get Match Result",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/match/{{po_number}}",
+              "host": ["{{base_url}}"],
+              "path": ["match", "{{po_number}}"]
+            },
+            "description": "Always recomputes the three-way match from current stored documents. Returns overall status, per-item reason codes, and per-item PO/GRN/Invoice quantity totals.\n\nPossible statuses:\n- `insufficient_documents` — PO, GRN, or Invoice not all present\n- `mismatch` — any hard violation (qty_exceeds, date, duplicate, item_missing_in_po)\n- `partially_matched` — no hard violations but soft warnings exist (price/mrp mismatch, unmapped SKU)\n- `matched` — fully reconciled, no reason codes"
+          }
+        },
+        {
+          "name": "Get Summary",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/summary/{{po_number}}",
+              "host": ["{{base_url}}"],
+              "path": ["summary", "{{po_number}}"]
+            },
+            "description": "Returns PO Amount, Total Invoiced, Total Received stat cards plus the Associated Invoice & GRN table with cumulative quantities and current match status."
+          }
+        }
+      ]
+    },
+    {
+      "name": "SKU Master",
+      "item": [
+        {
+          "name": "List SKUs",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/masters/sku?q=&page=1&limit=20",
+              "host": ["{{base_url}}"],
+              "path": ["masters", "sku"],
+              "query": [
+                { "key": "q", "value": "", "description": "Search by name or ERP code" },
+                { "key": "page", "value": "1" },
+                { "key": "limit", "value": "20" }
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get SKU by ID",
+          "request": {
+            "method": "GET",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/masters/sku/:id",
+              "host": ["{{base_url}}"],
+              "path": ["masters", "sku", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Create SKU",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"skuErpCode\": \"BIK-BIKANERI-200G\",\n  \"name\": \"Bikaji Bikaneri Bhujia 200g\",\n  \"eanCode\": \"8906001234567\",\n  \"hsnCode\": \"2106\",\n  \"uom\": \"PCS\",\n  \"agreedRate\": 49.00,\n  \"mrp\": 55.00,\n  \"priceTolerance\": 0.05\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/masters/sku",
+              "host": ["{{base_url}}"],
+              "path": ["masters", "sku"]
+            },
+            "description": "`skuErpCode` must be unique. `priceTolerance` is a fraction (0.05 = 5%). ERP and EAN codes are strings."
+          }
+        },
+        {
+          "name": "Update SKU",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" },
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"agreedRate\": 51.00,\n  \"priceTolerance\": 0.03\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/masters/sku/:id",
+              "host": ["{{base_url}}"],
+              "path": ["masters", "sku", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        },
+        {
+          "name": "Delete SKU",
+          "request": {
+            "method": "DELETE",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{token}}" }
+            ],
+            "url": {
+              "raw": "{{base_url}}/masters/sku/:id",
+              "host": ["{{base_url}}"],
+              "path": ["masters", "sku", ":id"],
+              "variable": [{ "key": "id", "value": "" }]
+            }
+          }
+        }
+      ]
+    }
+  ]
+}
