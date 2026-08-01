@@ -24,10 +24,12 @@ This engine automates that process end-to-end:
 | `grn_qty_exceeds_po_qty` | More units received than were ordered |
 | `invoice_qty_exceeds_grn_qty` | Invoice bills for more than was received |
 | `invoice_qty_exceeds_po_qty` | Invoice bills for more than was ordered |
-| `invoice_date_before_po_date` | Invoice is dated before the PO was raised |
+| `invoice_date_after_po_date` | Invoice date is after the PO date |
+| `duplicate_po` | A second PO was uploaded for a `poNumber` that already has one |
+| `duplicate_document` | A second GRN/Invoice reuses the same number under the same `poNumber` |
 | `item_missing_in_po` | GRN/Invoice has an item not found in the PO |
 | `price_mismatch` | Invoice unit rate deviates from agreed rate beyond tolerance |
-| `mrp_mismatch` | MRP on GRN vs Invoice differs by more than 1% |
+| `mrp_mismatch` | MRP on GRN/Invoice differs from SKU Master MRP by more than ~1% |
 | `unmapped_master_sku` | Item code not found in SKU Master catalogue |
 | `insufficient_documents` | One or more of PO / GRN / Invoice is missing |
 
@@ -176,6 +178,20 @@ GET /match/:poNumber recomputes → reason codes returned
 
 ---
 
+## Data Model
+
+| Collection | Key Fields |
+|---|---|
+| `SkuMaster` | `skuErpCode` (unique), `name`, `eanCode`, `hsnCode`, `uom`, `agreedRate`, `mrp`, `priceTolerance` |
+| `PurchaseOrder` | `poNumber` (unique), `poDate`, `vendorName`, `items[]` (`itemCode`, `description`, `quantity`, `skuMaster` ref nullable), `rawParsed`, `createdAt` |
+| `Grn` | `grnNumber` (unique per `poNumber`), `poNumber`, `grnDate`, `items[]` (`itemCode`, `description`, `receivedQuantity`, `mrp`, `skuMaster` nullable), `rawParsed` |
+| `Invoice` | `invoiceNumber` (unique per `poNumber`), `poNumber`, `invoiceDate`, `items[]` (`itemCode`, `description`, `quantity`, `unitRate`, `mrp`, `skuMaster` nullable), `rawParsed` |
+| `MatchAudit` | `poNumber`, `steps[]` (`step`, `status`, `message`, `at`) |
+
+`rawParsed` stores the unmodified Gemini/LLM output for debugging extraction problems without re-uploading. ERP and EAN codes are stored as strings.
+
+---
+
 ## How to Use
 
 ### 1. Login
@@ -257,6 +273,15 @@ npm run dev                          # starts on :3000
 
 ## API Reference
 
+A Postman collection covering all endpoints is included at `docs/Three-Way-Match-Engine.postman_collection.json`.
+
+**To use it:**
+1. Import the file into Postman (File → Import)
+2. Set the `base_url` collection variable if your backend runs on a different port
+3. Run **Login** first — the token is saved automatically to the `token` variable and attached to all subsequent requests
+
+---
+
 All endpoints except `POST /auth/login` require `Authorization: Bearer <token>`.
 
 | Method | Path | Description |
@@ -332,8 +357,9 @@ The assignment specification defines the SKU Master schema but does not provide 
 Documents are linked by the `poNumber` string, not by a foreign key to an existing PO record. This means a GRN or Invoice can be uploaded before the PO exists — each document is stored independently, and the match engine always recomputes from whatever is currently in the database. `insufficient_documents` is returned when the full PO + GRN + Invoice set isn't available; missing document types are never treated as zero quantities.
 
 ### Duplicate Handling
-- A second PO for the same `poNumber` → upserts the record and logs a `duplicate` audit step (surfaces the conflict, doesn't silently overwrite)
-- A second GRN/Invoice reusing the same number under the same `poNumber` → same upsert + audit behaviour
+- A second PO for the same `poNumber` → stored alongside the original (not overwritten), flagged `duplicate_po`, logged in MatchAudit
+- A second GRN/Invoice reusing the same number under the same `poNumber` → stored as-is, flagged `duplicate_document`, logged in MatchAudit
+- Both cases surface the conflict in the match result; the original record is never silently overwritten
 
 ### State Management Choice (TanStack Query over Redux Toolkit)
 TanStack Query was chosen because this app is read-heavy and recompute-on-demand. `GET /match/:poNumber` always recomputes, so the right pattern is to invalidate the cache on upload and refetch — exactly what TanStack Query is built for. Redux Toolkit would require manually managing loading/error states and cache invalidation logic that TanStack Query handles automatically. A small React Context handles auth token and UI state (active tab, selected GRN/Invoice index) — the only state that doesn't live on the server.
@@ -371,7 +397,22 @@ LLMs sometimes return numbers as strings (e.g. `"49.0"` instead of `49`). A cust
 
 ---
 
+## Deliverables Checklist
+
+| Item | Status |
+|---|---|
+| Working backend (Node.js / Express / MongoDB / Gemini-compatible) | ✅ |
+| Working frontend (Next.js App Router / Tailwind / TanStack Query) | ✅ |
+| `.env.example` (no committed secrets) | ✅ |
+| `README.md` — setup, approach, data model, matching logic, rationale | ✅ |
+| Postman collection | `docs/Three-Way-Match-Engine.postman_collection.json` |
+| Sample parsed JSON output | `docs/samples/` |
+| Sample `GET /match/:poNumber` response | see Sample API Responses section above |
+| Sample `GET /summary/:poNumber` response | see Sample API Responses section above |
+| Screenshots of working UI | `docs/screenshots/` |
+
+---
+
 ## AI Tools Used
 
-- **Claude Code (Anthropic)** — end-to-end implementation: backend (Express/Mongoose/match engine), frontend (Next.js/TanStack Query), debugging, and this README
 - **Groq / Llama 3.3 70B** — runtime PDF document parsing (LLM inference)
