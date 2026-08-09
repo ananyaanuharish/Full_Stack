@@ -3,7 +3,7 @@ const { z } = require('zod');
 const numStr = z.union([z.number(), z.string().transform(v => parseFloat(v) || 0)]).default(0);
 
 const poItemSchema = z.object({
-  itemCode: z.string().nullish().default(''),
+  itemCode: z.string().nullish().default('').transform(v => (v || '').replace(/\s+/g, '')),
   description: z.string().nullish().default(''),
   hsnCode: z.string().nullish().default(''),
   quantity: numStr,
@@ -24,7 +24,7 @@ const poSchema = z.object({
 });
 
 const grnItemSchema = z.object({
-  itemCode: z.string().nullish().default(''),
+  itemCode: z.string().nullish().default('').transform(v => (v || '').replace(/\s+/g, '')),
   description: z.string().nullish().default(''),
   hsnCode: z.string().nullish().default(''),
   expectedQuantity: numStr,
@@ -43,7 +43,7 @@ const grnSchema = z.object({
 });
 
 const invoiceItemSchema = z.object({
-  itemCode: z.string().nullish().default(''),
+  itemCode: z.string().nullish().default('').transform(v => (v || '').replace(/\s+/g, '')),
   description: z.string().nullish().default(''),
   hsnCode: z.string().nullish().default(''),
   quantity: numStr,

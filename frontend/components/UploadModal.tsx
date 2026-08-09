@@ -7,6 +7,28 @@ import { useRouter } from 'next/navigation';
 type FileState = { file: File | null; status: 'idle' | 'uploading' | 'done' | 'error'; message: string };
 const EMPTY: FileState = { file: null, status: 'idle', message: '' };
 
+function FileRow({
+  label, state, onChange,
+}: { label: string; state: FileState; onChange: (f: File | null) => void }) {
+  return (
+    <div>
+      <label className="block text-sm font-medium mb-1">{label}</label>
+      <div className="flex items-center gap-2">
+        <input type="file" accept=".pdf" className="flex-1 text-sm"
+          onChange={e => onChange(e.target.files?.[0] ?? null)} required />
+        {state.status === 'uploading' && (
+          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
+        )}
+        {state.status === 'done' && <span className="text-green-600 text-lg flex-shrink-0">✓</span>}
+        {state.status === 'error' && <span className="text-red-500 text-lg flex-shrink-0">✗</span>}
+      </div>
+      {state.status === 'error' && (
+        <p className="text-xs text-red-600 mt-1">{state.message}</p>
+      )}
+    </div>
+  );
+}
+
 export default function UploadModal({ onClose }: { onClose: () => void }) {
   const qc = useQueryClient();
   const router = useRouter();
@@ -54,26 +76,6 @@ export default function UploadModal({ onClose }: { onClose: () => void }) {
   const goToResults = () => {
     if (poNumber) { onClose(); router.push(`/po/${poNumber}`); }
   };
-
-  const FileRow = ({
-    label, state, onChange,
-  }: { label: string; state: FileState; onChange: (f: File | null) => void }) => (
-    <div>
-      <label className="block text-sm font-medium mb-1">{label}</label>
-      <div className="flex items-center gap-2">
-        <input type="file" accept=".pdf" className="flex-1 text-sm"
-          onChange={e => onChange(e.target.files?.[0] ?? null)} required />
-        {state.status === 'uploading' && (
-          <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin flex-shrink-0" />
-        )}
-        {state.status === 'done' && <span className="text-green-600 text-lg flex-shrink-0">✓</span>}
-        {state.status === 'error' && <span className="text-red-500 text-lg flex-shrink-0">✗</span>}
-      </div>
-      {state.status === 'error' && (
-        <p className="text-xs text-red-600 mt-1">{state.message}</p>
-      )}
-    </div>
-  );
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>

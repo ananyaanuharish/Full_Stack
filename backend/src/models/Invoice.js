@@ -14,7 +14,7 @@ const invoiceItemSchema = new mongoose.Schema({
 }, { _id: false });
 
 const invoiceSchema = new mongoose.Schema({
-  invoiceNumber: { type: String, required: true, unique: true, trim: true },
+  invoiceNumber: { type: String, required: true, trim: true },
   poNumber: { type: String, required: true, trim: true },
   invoiceDate: { type: String, trim: true },
   vendorName: { type: String, trim: true },

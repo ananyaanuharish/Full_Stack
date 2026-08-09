@@ -29,7 +29,34 @@ function FieldRow({ label, value }: { label: string; value?: string | number | n
   );
 }
 
-function DocPanel({ title, fields, fileId }: { title: string; fields: { label: string; value?: string | number | null }[]; fileId?: string }) {
+const REASON_LABELS: Record<string, string> = {
+  grn_qty_exceeds_po_qty: 'GRN Qty Exceeds PO Qty',
+  invoice_qty_exceeds_grn_qty: 'Invoice Qty Exceeds GRN Qty',
+  invoice_qty_exceeds_po_qty: 'Invoice Qty Exceeds PO Qty',
+  invoice_date_after_po_date: 'Invoice Date After PO Date',
+  item_missing_in_po: 'Item Missing in PO',
+  price_mismatch: 'Price Mismatch',
+  mrp_mismatch: 'MRP Mismatch',
+  unmapped_master_sku: 'Unmapped SKU',
+  duplicate_po: 'Duplicate PO',
+  duplicate_document: 'Duplicate Document',
+};
+
+function MismatchBanner({ reasons }: { reasons: string[] }) {
+  if (!reasons.length) return null;
+  const unique = [...new Set(reasons)];
+  return (
+    <div className="px-6 py-3 bg-red-50 border-b border-red-200 flex gap-2 flex-wrap">
+      {unique.map(r => (
+        <span key={r} className="text-xs font-semibold text-red-700 bg-red-100 border border-red-200 px-2.5 py-1 rounded-full">
+          {REASON_LABELS[r] ?? r.replace(/_/g, ' ')}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function DocPanel({ title, fields, fileId, reasons = [] }: { title: string; fields: { label: string; value?: string | number | null }[]; fileId?: string; reasons?: string[] }) {
   const [zoom, setZoom] = useState(100);
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
   const fileUrl = fileId ? `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/documents/${fileId}/file?token=${token}` : null;
@@ -46,6 +73,8 @@ function DocPanel({ title, fields, fileId }: { title: string; fields: { label: s
           </a>
         )}
       </div>
+
+      <MismatchBanner reasons={reasons} />
 
       {/* Two-column layout: metadata left, PDF right */}
       <div className="flex min-h-[560px]">
@@ -136,6 +165,15 @@ export default function PoMatchPage() {
   const statusIcon = match ? STATUS_ICONS[match.status] ?? '?' : '';
   const uniqueReasons = match ? [...new Set(match.reasons)] : [];
 
+  const poReasons = match?.reasons ?? [];
+  const grnReasons = (match?.reasons ?? []).filter(r =>
+    ['grn_qty_exceeds_po_qty', 'duplicate_document', 'unmapped_master_sku'].includes(r)
+  );
+  const invoiceReasons = (match?.reasons ?? []).filter(r =>
+    ['invoice_qty_exceeds_grn_qty', 'invoice_qty_exceeds_po_qty', 'invoice_date_after_po_date',
+      'price_mismatch', 'mrp_mismatch', 'item_missing_in_po', 'duplicate_document'].includes(r)
+  );
+
   const tabs = [
     { key: 'po', label: 'Purchase Order', count: 1 },
     { key: 'delivery', label: 'Delivery', count: grns.length },
@@ -216,6 +254,7 @@ export default function PoMatchPage() {
             <DocPanel
               title="Purchase Order Details"
               fileId={po?._id}
+              reasons={poReasons}
               fields={[
                 { label: 'PO Number', value: po?.poNumber },
                 { label: 'PO Date', value: po?.poDate },
@@ -262,6 +301,7 @@ export default function PoMatchPage() {
                 <DocPanel
                   title={`GRN: ${grn?.grnNumber}`}
                   fileId={grn?._id}
+                  reasons={grnReasons}
                   fields={[
                     { label: 'GRN Number', value: grn?.grnNumber },
                     { label: 'PO Number', value: grn?.poNumber },
@@ -309,6 +349,7 @@ export default function PoMatchPage() {
                 <DocPanel
                   title={`Invoice: ${inv?.invoiceNumber}`}
                   fileId={inv?._id}
+                  reasons={invoiceReasons}
                   fields={[
                     { label: 'Invoice Number', value: inv?.invoiceNumber },
                     { label: 'PO Number', value: inv?.poNumber },

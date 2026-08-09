@@ -2,7 +2,8 @@ require('dotenv').config({ path: require('path').join(__dirname, '../../.env') }
 const mongoose = require('mongoose');
 const SkuMaster = require('../models/SkuMaster');
 
-const SEEDS = [
+// Baseline: correct master data matching PO CI4PO05788's real momos/meat catalog.
+const BASELINE = [
   { skuErpCode: '11423', name: 'Cheesy Spicy Veg Momos 24.0 Pieces', hsnCode: '19022010', mrp: 305.00, agreedRate: 220.762, uom: 'PKT', altCodes: ['FG-P-F-0503'] },
   { skuErpCode: '11797', name: 'Meatigo Hot Wings 250.0g', hsnCode: '02071400', mrp: 175.00, agreedRate: 126.667, uom: 'PKT', altCodes: ['FG-M-F-1703'] },
   { skuErpCode: '18003', name: 'Meatigo Chicken Curry Cut Skinless Frozen 450.0g', hsnCode: '02071300', mrp: 195.00, agreedRate: 141.143, uom: 'PKT', altCodes: ['FG-M-F-0620'] },
@@ -45,10 +46,49 @@ const SEEDS = [
   { skuErpCode: '507809', name: 'Pizza Minis - Chicken Tikka 180.0g', hsnCode: '19059090', mrp: 159.00, agreedRate: 115.086, uom: 'PKT', altCodes: ['FG-P-F-1911'] },
 ];
 
-async function seed() {
+// Each scenario is a set of { skuErpCode, ...fieldOverrides } applied on top of BASELINE.
+// altCodes: [] (explicit empty array) removes the invoice alias -> invoice line becomes unresolved.
+const SCENARIOS = {
+  clean: [],
+
+  'price-mismatch': [
+    { skuErpCode: '4459', agreedRate: 260.00 },   // invoice rate 220.76 vs agreed 260.00 -> >5% diff
+    { skuErpCode: '18003', agreedRate: 180.00 },  // invoice rate 141.14 vs agreed 180.00 -> >5% diff
+  ],
+
+  'mrp-mismatch': [
+    { skuErpCode: '4460', mrp: 250.00 },   // GRN/Invoice mrp 305.00 vs master 250.00 -> >1% diff
+    { skuErpCode: '89201', mrp: 500.00 },  // GRN/Invoice mrp 585.00 vs master 500.00 -> >1% diff
+  ],
+
+  unmapped: [
+    { skuErpCode: '750414', altCodes: [] }, // invoice code FG-P-F-0501 no longer aliased -> unmapped
+    { skuErpCode: '81521', altCodes: [] },  // invoice code FG-P-F-0542 no longer aliased -> unmapped
+  ],
+
+  mixed: [
+    { skuErpCode: '4459', agreedRate: 260.00 },
+    { skuErpCode: '4460', mrp: 250.00 },
+    { skuErpCode: '750414', altCodes: [] },
+  ],
+};
+
+async function seed(scenarioName) {
+  const overrides = SCENARIOS[scenarioName];
+  if (!overrides) {
+    console.error(`Unknown scenario "${scenarioName}". Available: ${Object.keys(SCENARIOS).join(', ')}`);
+    process.exit(1);
+  }
+
   await mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/three-way-match');
+
+  const merged = BASELINE.map(item => {
+    const override = overrides.find(o => o.skuErpCode === item.skuErpCode);
+    return override ? { ...item, ...override } : item;
+  });
+
   let inserted = 0, updated = 0;
-  for (const item of SEEDS) {
+  for (const item of merged) {
     const res = await SkuMaster.findOneAndUpdate(
       { skuErpCode: item.skuErpCode },
       item,
@@ -57,8 +97,14 @@ async function seed() {
     if (res.createdAt && res.updatedAt && res.createdAt.getTime() === res.updatedAt.getTime()) inserted++;
     else updated++;
   }
-  console.log(`Seed complete: ${inserted} inserted, ${updated} updated. Total: ${SEEDS.length} SKUs.`);
+
+  console.log(`Scenario "${scenarioName}" seeded: ${inserted} inserted, ${updated} updated. Total: ${merged.length} SKUs.`);
+  if (overrides.length) {
+    console.log('Overrides applied:');
+    overrides.forEach(o => console.log(' -', JSON.stringify(o)));
+  }
   await mongoose.disconnect();
 }
 
-seed().catch(err => { console.error(err); process.exit(1); });
+const scenarioName = process.argv[2] || 'clean';
+seed(scenarioName).catch(err => { console.error(err); process.exit(1); });

@@ -14,7 +14,7 @@ const poItemSchema = new mongoose.Schema({
 }, { _id: false });
 
 const purchaseOrderSchema = new mongoose.Schema({
-  poNumber: { type: String, required: true, unique: true, trim: true },
+  poNumber: { type: String, required: true, trim: true },
   poDate: { type: String, trim: true },
   vendorName: { type: String, trim: true },
   vendorCode: { type: String, trim: true },

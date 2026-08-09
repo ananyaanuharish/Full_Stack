@@ -1,4 +1,5 @@
 const Groq = require('groq-sdk');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
 const PDF2Json = require('pdf2json');
 const fs = require('fs');
 
@@ -89,14 +90,8 @@ function cleanJsonResponse(text) {
   return text.trim();
 }
 
-async function parseDocumentWithGemini(filePath, documentType) {
-  const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey) throw new Error('GROQ_API_KEY is not set');
-
-  const prompt = PROMPTS[documentType];
-  if (!prompt) throw new Error(`Unknown document type: ${documentType}`);
-
-  const pdfText = await new Promise((resolve, reject) => {
+async function extractPdfText(filePath) {
+  return new Promise((resolve, reject) => {
     const parser = new PDF2Json();
     parser.on('pdfParser_dataReady', (data) => {
       const safeDecode = (s) => { try { return decodeURIComponent(s); } catch { return s; } };
@@ -107,7 +102,43 @@ async function parseDocumentWithGemini(filePath, documentType) {
     });
     parser.on('pdfParser_dataError', (e) => reject(new Error(e.parserError)));
     parser.loadPDF(filePath);
-  }); // Groq context limit guard
+  });
+}
+
+async function parseWithGemini(prompt, pdfText) {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error('GEMINI_API_KEY is not set');
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const model = genAI.getGenerativeModel({ model: 'gemini-flash-latest' });
+
+  const maxAttempts = 3;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      const result = await model.generateContent(
+        `${prompt}\n\nDocument text:\n${pdfText}`
+      );
+      const text = result.response.text();
+      const cleaned = cleanJsonResponse(text);
+      try {
+        return JSON.parse(cleaned);
+      } catch {
+        throw new Error(`Gemini returned invalid JSON: ${cleaned.substring(0, 200)}`);
+      }
+    } catch (err) {
+      lastErr = err;
+      const isOverloaded = /503|overloaded|high demand/i.test(err.message || '');
+      if (!isOverloaded || attempt === maxAttempts) throw err;
+      await new Promise(r => setTimeout(r, attempt * 2000));
+    }
+  }
+  throw lastErr;
+}
+
+async function parseWithGroq(prompt, pdfText) {
+  const apiKey = process.env.GROQ_API_KEY;
+  if (!apiKey) throw new Error('GROQ_API_KEY is not set');
 
   const groq = new Groq({ apiKey });
   const completion = await groq.chat.completions.create({
@@ -123,14 +154,28 @@ async function parseDocumentWithGemini(filePath, documentType) {
   const text = completion.choices[0]?.message?.content || '';
   const cleaned = cleanJsonResponse(text);
 
-  let parsed;
   try {
-    parsed = JSON.parse(cleaned);
+    return JSON.parse(cleaned);
   } catch {
     throw new Error(`Groq returned invalid JSON: ${cleaned.substring(0, 200)}`);
   }
+}
 
-  return parsed;
+async function parseDocumentWithGemini(filePath, documentType) {
+  const prompt = PROMPTS[documentType];
+  if (!prompt) throw new Error(`Unknown document type: ${documentType}`);
+
+  const pdfText = await extractPdfText(filePath);
+
+  try {
+    return await parseWithGemini(prompt, pdfText);
+  } catch (geminiErr) {
+    try {
+      return await parseWithGroq(prompt, pdfText);
+    } catch (groqErr) {
+      throw new Error(`Gemini failed (${geminiErr.message}); Groq fallback also failed (${groqErr.message})`);
+    }
+  }
 }
 
 module.exports = { parseDocumentWithGemini };

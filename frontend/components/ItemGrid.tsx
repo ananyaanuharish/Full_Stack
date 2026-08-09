@@ -33,7 +33,7 @@ export default function ItemGrid({ lines }: { lines: LineDetail[] }) {
       <table className="min-w-full text-xs border-collapse">
         <thead className="bg-gray-100 text-gray-600 uppercase tracking-wide">
           <tr>
-            {['SKU Name','ERP Code','EAN','HSN','UOM','PO Qty','GRN Qty','Inv Qty','PO Rate','Inv Rate','PO MRP','GRN MRP','Inv MRP','Flags'].map(h => (
+            {['SKU Name','Description','ERP Code','EAN','HSN','UOM','PO Qty','GRN Qty','Inv Qty','PO Rate','Inv Rate','PO MRP','GRN MRP','Inv MRP','PO Gross Amt','Inv Gross Amt','Flags'].map(h => (
               <th key={h} className="px-3 py-2 text-left whitespace-nowrap border-b">{h}</th>
             ))}
           </tr>
@@ -46,6 +46,7 @@ export default function ItemGrid({ lines }: { lines: LineDetail[] }) {
             return (
               <tr key={i} className={`border-b ${unmapped ? 'bg-red-50' : i % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
                 <td className="px-3 py-2 whitespace-nowrap font-medium">{skuName(line.skuMaster)}</td>
+                <td className="px-3 py-2 whitespace-nowrap text-gray-500">{line.description || line.invDescription || line.grnDescription || '—'}</td>
                 <td className="px-3 py-2">{skuErp(line.skuMaster)}</td>
                 <td className="px-3 py-2">{skuEan(line.skuMaster)}</td>
                 <td className="px-3 py-2">{skuHsn(line.skuMaster)}</td>
@@ -58,6 +59,8 @@ export default function ItemGrid({ lines }: { lines: LineDetail[] }) {
                 <td className="px-3 py-2 text-right">{fmt(line.poMrp)}</td>
                 <td className={`px-3 py-2 text-right ${hasMrp ? 'bg-orange-100' : ''}`}>{fmt(line.grnMrp)}</td>
                 <td className={`px-3 py-2 text-right ${hasMrp ? 'bg-orange-100' : ''}`}>{fmt(line.invMrp)}</td>
+                <td className="px-3 py-2 text-right">{fmt(line.poGrossAmount)}</td>
+                <td className="px-3 py-2 text-right">{fmt(line.invGrossAmount)}</td>
                 <td className="px-3 py-2">
                   {unmapped && <span className="text-red-600 font-bold mr-1" title="Unmapped SKU">⚠</span>}
                   {line.reasons.filter(r => r !== 'unmapped_master_sku').map(r => (

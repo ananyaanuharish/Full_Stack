@@ -4,6 +4,7 @@ const skuMasterSchema = new mongoose.Schema({
   skuErpCode: { type: String, required: true, unique: true, trim: true },
   name: { type: String, required: true, trim: true },
   eanCode: { type: String, trim: true, default: '' },
+  altCodes: { type: [String], default: [] },
   hsnCode: { type: String, trim: true, default: '' },
   uom: { type: String, trim: true, default: 'PKT' },
   agreedRate: { type: Number, default: null },

@@ -7,14 +7,25 @@ const REASON_CODES = {
   GRN_QTY_EXCEEDS_PO: 'grn_qty_exceeds_po_qty',
   INVOICE_QTY_EXCEEDS_GRN: 'invoice_qty_exceeds_grn_qty',
   INVOICE_QTY_EXCEEDS_PO: 'invoice_qty_exceeds_po_qty',
-  INVOICE_DATE_BEFORE_PO: 'invoice_date_before_po_date',
+  INVOICE_DATE_AFTER_PO: 'invoice_date_after_po_date',
   ITEM_MISSING_IN_PO: 'item_missing_in_po',
   PRICE_MISMATCH: 'price_mismatch',
   MRP_MISMATCH: 'mrp_mismatch',
   UNMAPPED_SKU: 'unmapped_master_sku',
   DUPLICATE_PO: 'duplicate_po',
+  DUPLICATE_DOCUMENT: 'duplicate_document',
   INSUFFICIENT_DOCUMENTS: 'insufficient_documents',
 };
+
+const HARD_REASONS = new Set([
+  REASON_CODES.GRN_QTY_EXCEEDS_PO,
+  REASON_CODES.INVOICE_QTY_EXCEEDS_GRN,
+  REASON_CODES.INVOICE_QTY_EXCEEDS_PO,
+  REASON_CODES.INVOICE_DATE_AFTER_PO,
+  REASON_CODES.ITEM_MISSING_IN_PO,
+  REASON_CODES.DUPLICATE_PO,
+  REASON_CODES.DUPLICATE_DOCUMENT,
+]);
 
 function parseDate(str) {
   if (!str) return null;
@@ -23,17 +34,19 @@ function parseDate(str) {
 }
 
 function buildSkuKey(item) {
-  if (item.skuMaster) return `sku:${item.skuMaster.toString()}`;
+  if (item.skuMaster) {
+    const id = item.skuMaster._id || item.skuMaster;
+    return `sku:${id.toString()}`;
+  }
   return `code:${(item.itemCode || '').trim().toLowerCase()}`;
 }
 
 function rollupStatus(reasons) {
   if (reasons.includes(REASON_CODES.INSUFFICIENT_DOCUMENTS)) return 'insufficient_documents';
   if (reasons.length === 0) return 'matched';
-  const softReasons = [REASON_CODES.UNMAPPED_SKU];
-  const hardReasons = reasons.filter(r => !softReasons.includes(r));
-  if (hardReasons.length === 0) return 'matched';
-  return 'mismatch';
+  const hasHard = reasons.some(r => HARD_REASONS.has(r));
+  if (hasHard) return 'mismatch';
+  return 'partially_matched';
 }
 
 async function runMatch(poNumber) {
@@ -75,8 +88,9 @@ async function runMatch(poNumber) {
   for (const inv of invoices) {
     for (const item of inv.items) {
       const key = buildSkuKey(item);
-      const existing = invMap.get(key) || { quantity: 0, unitRate: item.unitRate, mrp: item.mrp, key, itemCode: item.itemCode, description: item.description };
+      const existing = invMap.get(key) || { quantity: 0, unitRate: item.unitRate, mrp: item.mrp, key, itemCode: item.itemCode, description: item.description, grossAmount: 0 };
       existing.quantity += item.quantity || 0;
+      existing.grossAmount += item.grossAmount || 0;
       if (!existing.unitRate && item.unitRate) existing.unitRate = item.unitRate;
       invMap.set(key, existing);
     }
@@ -118,10 +132,18 @@ async function runMatch(poNumber) {
       if (priceDiff > priceTolerance) lineReasons.push(REASON_CODES.PRICE_MISMATCH);
     }
 
-    // MRP check: compare GRN and Invoice MRP within 1%
-    if (grnMrp > 0 && invMrp > 0) {
-      const mrpDiff = Math.abs(grnMrp - invMrp) / grnMrp;
-      if (mrpDiff > 0.01) lineReasons.push(REASON_CODES.MRP_MISMATCH);
+    // MRP check: GRN/Invoice mrp vs SkuMaster.mrp, within ~1%
+    let masterMrp = null;
+    if (poItem.skuMaster) {
+      const skuDoc = await SkuMaster.findById(poItem.skuMaster._id || poItem.skuMaster);
+      if (skuDoc && skuDoc.mrp != null && skuDoc.mrp > 0) masterMrp = skuDoc.mrp;
+    }
+    if (masterMrp) {
+      const grnMrpMismatch = grnMrp > 0 && Math.abs(grnMrp - masterMrp) / masterMrp > 0.01;
+      const invMrpMismatch = invMrp > 0 && Math.abs(invMrp - masterMrp) / masterMrp > 0.01;
+      if ((grnMrpMismatch || invMrpMismatch) && !lineReasons.includes(REASON_CODES.MRP_MISMATCH)) {
+        lineReasons.push(REASON_CODES.MRP_MISMATCH);
+      }
     }
 
     if (poItem.flags && poItem.flags.includes('unmapped_master_sku')) {
@@ -136,6 +158,8 @@ async function runMatch(poNumber) {
       key,
       itemCode: poItem.itemCode,
       description: poItem.description,
+      grnDescription: grnItem ? grnItem.description : undefined,
+      invDescription: invItem ? invItem.description : undefined,
       skuMaster: poItem.skuMaster,
       poQty,
       grnQty,
@@ -146,6 +170,8 @@ async function runMatch(poNumber) {
       poMrp,
       grnMrp,
       invMrp,
+      poGrossAmount: poItem.grossAmount || 0,
+      invGrossAmount: invItem ? (invItem.grossAmount || 0) : 0,
       reasons: lineReasons,
     });
   }
@@ -158,26 +184,44 @@ async function runMatch(poNumber) {
         key,
         itemCode: invItem.itemCode,
         description: invItem.description,
+        invDescription: invItem.description,
         poQty: 0,
         grnQty: grnMap.get(key) ? grnMap.get(key).receivedQuantity : 0,
         invQty: invItem.quantity,
+        invGrossAmount: invItem.grossAmount || 0,
         reasons: [REASON_CODES.ITEM_MISSING_IN_PO],
       });
     }
   }
 
-  // Date check
+  // Date check: no Invoice date may be after the PO date
   if (po.poDate && invoices.length > 0) {
     const poDateObj = parseDate(po.poDate);
     for (const inv of invoices) {
       const invDate = parseDate(inv.invoiceDate);
-      if (poDateObj && invDate && invDate < poDateObj) {
-        if (!reasons.includes(REASON_CODES.INVOICE_DATE_BEFORE_PO)) {
-          reasons.push(REASON_CODES.INVOICE_DATE_BEFORE_PO);
+      if (poDateObj && invDate && invDate > poDateObj) {
+        if (!reasons.includes(REASON_CODES.INVOICE_DATE_AFTER_PO)) {
+          reasons.push(REASON_CODES.INVOICE_DATE_AFTER_PO);
         }
       }
     }
   }
+
+  // Duplicate checks: more than one PO for this poNumber, or more than one
+  // GRN/Invoice sharing the same grnNumber/invoiceNumber under this poNumber
+  const poCount = await PurchaseOrder.countDocuments({ poNumber });
+  if (poCount > 1) reasons.push(REASON_CODES.DUPLICATE_PO);
+
+  const grnNumberCounts = new Map();
+  for (const grn of grns) {
+    grnNumberCounts.set(grn.grnNumber, (grnNumberCounts.get(grn.grnNumber) || 0) + 1);
+  }
+  const invoiceNumberCounts = new Map();
+  for (const inv of invoices) {
+    invoiceNumberCounts.set(inv.invoiceNumber, (invoiceNumberCounts.get(inv.invoiceNumber) || 0) + 1);
+  }
+  const hasDuplicateDocument = [...grnNumberCounts.values(), ...invoiceNumberCounts.values()].some(c => c > 1);
+  if (hasDuplicateDocument) reasons.push(REASON_CODES.DUPLICATE_DOCUMENT);
 
   const status = rollupStatus(reasons);
 

@@ -66,6 +66,8 @@ export interface LineDetail {
   key: string;
   itemCode?: string;
   description?: string;
+  grnDescription?: string;
+  invDescription?: string;
   skuMaster?: SkuMaster | string | null;
   poQty: number;
   grnQty: number;
@@ -76,6 +78,8 @@ export interface LineDetail {
   poMrp?: number;
   grnMrp?: number;
   invMrp?: number;
+  poGrossAmount?: number;
+  invGrossAmount?: number;
   reasons: string[];
 }
 

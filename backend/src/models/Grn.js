@@ -13,7 +13,7 @@ const grnItemSchema = new mongoose.Schema({
 }, { _id: false });
 
 const grnSchema = new mongoose.Schema({
-  grnNumber: { type: String, required: true, unique: true, trim: true },
+  grnNumber: { type: String, required: true, trim: true },
   poNumber: { type: String, required: true, trim: true },
   grnDate: { type: String, trim: true },
   vendorName: { type: String, trim: true },

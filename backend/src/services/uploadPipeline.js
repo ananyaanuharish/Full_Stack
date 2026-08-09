@@ -14,9 +14,10 @@ async function appendAudit(poNumber, step, status, message) {
   );
 }
 
-async function checkDuplicate(docType, uniqueField, uniqueValue) {
+async function checkDuplicate(docType, poNumber, uniqueField, uniqueValue) {
   const Model = { po: PurchaseOrder, grn: Grn, invoice: Invoice }[docType];
-  const existing = await Model.findOne({ [uniqueField]: uniqueValue });
+  const filter = docType === 'po' ? { poNumber } : { poNumber, [uniqueField]: uniqueValue };
+  const existing = await Model.findOne(filter);
   return !!existing;
 }
 
@@ -57,44 +58,16 @@ async function runUploadPipeline(filePath, originalFilename, documentType) {
   const uniqueFields = { po: ['poNumber', poNumber], grn: ['grnNumber', validated.grnNumber], invoice: ['invoiceNumber', validated.invoiceNumber] };
   const [uniqueField, uniqueValue] = uniqueFields[documentType];
 
-  // 5. Check duplicate
-  const isDuplicate = await checkDuplicate(documentType, uniqueField, uniqueValue);
+  // 5. Check duplicate (store anyway — never overwrite; conflict surfaces in match results)
+  const isDuplicate = await checkDuplicate(documentType, poNumber, uniqueField, uniqueValue);
 
   // 6. Persist document
-  let doc;
-  if (documentType === 'po') {
-    if (isDuplicate) {
-      doc = await PurchaseOrder.findOneAndUpdate(
-        { poNumber },
-        { ...validated, filePath, originalFilename, rawParsed: raw },
-        { new: true }
-      );
-      warnings.push('Duplicate PO — existing record updated');
-    } else {
-      doc = await PurchaseOrder.create({ ...validated, filePath, originalFilename, rawParsed: raw });
-    }
-  } else if (documentType === 'grn') {
-    if (isDuplicate) {
-      doc = await Grn.findOneAndUpdate(
-        { grnNumber: validated.grnNumber },
-        { ...validated, filePath, originalFilename, rawParsed: raw },
-        { new: true }
-      );
-      warnings.push('Duplicate GRN — existing record updated');
-    } else {
-      doc = await Grn.create({ ...validated, filePath, originalFilename, rawParsed: raw });
-    }
-  } else {
-    if (isDuplicate) {
-      doc = await Invoice.findOneAndUpdate(
-        { invoiceNumber: validated.invoiceNumber },
-        { ...validated, filePath, originalFilename, rawParsed: raw },
-        { new: true }
-      );
-      warnings.push('Duplicate Invoice — existing record updated');
-    } else {
-      doc = await Invoice.create({ ...validated, filePath, originalFilename, rawParsed: raw });
-    }
+  const Model = { po: PurchaseOrder, grn: Grn, invoice: Invoice }[documentType];
+  const doc = await Model.create({ ...validated, filePath, originalFilename, rawParsed: raw });
+
+  if (isDuplicate) {
+    const label = { po: 'PO', grn: 'GRN', invoice: 'Invoice' }[documentType];
+    warnings.push(`Duplicate ${label} — stored as a separate record; conflict will surface in match results`);
   }
 
   // 7. Append audit
