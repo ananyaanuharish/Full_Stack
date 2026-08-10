@@ -460,3 +460,12 @@ LLMs sometimes return numbers as strings (e.g. `"49.0"` instead of `49`). A cust
 
 - **Gemini (`gemini-flash-latest`)** — runtime PDF document parsing (LLM inference), primary
 - **Groq / Llama 3.3 70B** — runtime PDF document parsing (LLM inference), fallback when Gemini is unavailable
+
+
+
+
+
+taskkill /F /IM node.exe
+
+// db clean
+node -e "const mongoose = require('mongoose'); require('dotenv').config(); mongoose.connect(process.env.MONGODB_URI).then(async () => { const db = mongoose.connection.db; for (const coll of ['skumasters', 'grns', 'matchaudits', 'invoices', 'purchaseorders']) { const res = await db.collection(coll).deleteMany({}); console.log(coll, 'deleted:', res.deletedCount); } process.exit(0); }).catch(e => { console.error(e); process.exit(1); });"
