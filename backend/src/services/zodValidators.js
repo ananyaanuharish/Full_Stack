@@ -1,3 +1,5 @@
+//Controls schema validation for uploaded documents and inputs.
+
 const { z } = require('zod');
 
 const numStr = z.union([z.number(), z.string().transform(v => parseFloat(v) || 0)]).default(0);

@@ -121,8 +121,9 @@ async function runMatch(poNumber) {
         priceTolerance = skuDoc.priceTolerance || 0.05;
       }
     }
-
+    //If we received more than what was ordered, I flag grn_qty_exceeds_po_qty
     if (grnQty > poQty) lineReasons.push(REASON_CODES.GRN_QTY_EXCEEDS_PO);
+    //If the vendor is billing for more quantity than we received, I flag invoice_qty_exceeds_grn_qty
     if (invQty > grnQty && grnQty > 0) lineReasons.push(REASON_CODES.INVOICE_QTY_EXCEEDS_GRN);
     if (invQty > poQty) lineReasons.push(REASON_CODES.INVOICE_QTY_EXCEEDS_PO);
 
@@ -195,6 +196,7 @@ async function runMatch(poNumber) {
   }
 
   // Date check: no Invoice date may be after the PO date
+  //validate the invoice date against the PO date. If the invoice date is after the PO date, I add invoice_date_after_po_date
   if (po.poDate && invoices.length > 0) {
     const poDateObj = parseDate(po.poDate);
     for (const inv of invoices) {
@@ -207,8 +209,7 @@ async function runMatch(poNumber) {
     }
   }
 
-  // Duplicate checks: more than one PO for this poNumber, or more than one
-  // GRN/Invoice sharing the same grnNumber/invoiceNumber under this poNumber
+  // check for duplicate POs and duplicate GRN or invoice numbers. If duplicates are found, I add the corresponding duplicate reason code
   const poCount = await PurchaseOrder.countDocuments({ poNumber });
   if (poCount > 1) reasons.push(REASON_CODES.DUPLICATE_PO);
 
