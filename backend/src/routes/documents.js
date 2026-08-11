@@ -31,7 +31,7 @@ const upload = multer({
 });
 
 router.use(auth);
-
+//upload a PO/GRN/Invoice PDF and process it
 router.post('/upload', upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'No file uploaded' });
   const { documentType } = req.body;
@@ -46,7 +46,7 @@ router.post('/upload', upload.single('file'), async (req, res) => {
     res.status(422).json({ error: err.message });
   }
 });
-
+//get/download the original uploaded file.
 router.get('/:id/file', async (req, res) => {
   let doc = await PurchaseOrder.findById(req.params.id).catch(() => null)
     || await Grn.findById(req.params.id).catch(() => null)
@@ -55,7 +55,7 @@ router.get('/:id/file', async (req, res) => {
   if (!fs.existsSync(doc.filePath)) return res.status(404).json({ error: 'File missing on disk' });
   res.sendFile(path.resolve(doc.filePath));
 });
-
+//get details of a particular document.
 router.get('/:id', async (req, res) => {
   const doc = await PurchaseOrder.findById(req.params.id).catch(() => null)
     || await Grn.findById(req.params.id).catch(() => null)

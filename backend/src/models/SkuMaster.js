@@ -1,3 +1,7 @@
+// SkuMaster.js is the schema for storing the main product or SKU information. 
+// It stores things like the SKU code, product name, EAN code, HSN, agreed price and MRP. 
+// The price tolerance is also stored here, which is later used when checking price mismatches.
+
 const mongoose = require('mongoose');
 
 const skuMasterSchema = new mongoose.Schema({
